@@ -1,0 +1,179 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mika Mochi BLE</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  max-width: 600px;
+  margin: auto;
+  padding: 20px;
+  background: #f3f5fa;
+  color: #202534;
+}
+h1 { text-align: center; }
+.card {
+  background: white;
+  padding: 16px;
+  border-radius: 14px;
+  margin: 12px 0;
+  box-shadow: 0 2px 8px #0001;
+}
+button, input, textarea {
+  font: inherit;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ccd1dc;
+  box-sizing: border-box;
+}
+button {
+  background: #2457db;
+  color: white;
+  border: none;
+  cursor: pointer;
+  margin: 4px 2px;
+}
+input, textarea { width: 100%; margin: 6px 0; }
+textarea { min-height: 70px; }
+.status {
+  padding: 10px;
+  background: #e9eefb;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+</style>
+</head>
+<body>
+
+<h1>🤖 Mika Mochi</h1>
+<p>Kontrol Bluetooth BLE untuk ESP32-C3 Super Mini</p>
+
+<div class="card">
+  <h3>Koneksi Bluetooth</h3>
+  <button onclick="connectBLE()">Hubungkan Mika Mochi</button>
+  <button onclick="disconnectBLE()">Putuskan</button>
+  <p id="status" class="status">Belum terhubung</p>
+</div>
+
+<div class="card">
+  <h3>Ekspresi wajah</h3>
+  <button onclick="sendBLE('HAPPY')">😊 Senang</button>
+  <button onclick="sendBLE('SLEEPY')">😴 Mengantuk</button>
+  <button onclick="sendBLE('NORMAL')">🙂 Normal</button>
+</div>
+
+<div class="card">
+  <h3>Jam dan suhu</h3>
+  <button onclick="sendCurrentTime()">Kirim jam HP sekarang</button>
+  <input id="clock" placeholder="Contoh: 13:45">
+  <button onclick="sendBLE('CLOCK|' + document.getElementById('clock').value)">Kirim jam</button>
+  <input id="temp" placeholder="Contoh: 28 C">
+  <button onclick="sendBLE('TEMP|' + document.getElementById('temp').value)">Kirim suhu</button>
+</div>
+
+<div class="card">
+  <h3>Pesan</h3>
+  <input id="sender" placeholder="Nama pengirim" value="Ibu">
+  <textarea id="message" placeholder="Tulis pesan..."></textarea>
+  <button onclick="sendMessage()">Kirim pesan</button>
+</div>
+
+<div class="card">
+  <h3>Panggilan simulasi</h3>
+  <input id="caller" placeholder="Nama pemanggil" value="Ibu">
+  <button onclick="sendBLE('CALL|' + document.getElementById('caller').value)">Panggilan masuk</button>
+  <button onclick="sendBLE('ANSWERED')">Dijawab</button>
+  <button onclick="sendBLE('CALL_END')">Akhiri</button>
+</div>
+
+<div class="card">
+  <h3>Petunjuk Google Maps</h3>
+  <textarea id="maps" placeholder="Contoh: Belok kiri 100 meter"></textarea>
+  <button onclick="sendBLE('MAPS|' + document.getElementById('maps').value)">Kirim petunjuk</button>
+</div>
+
+<script>
+const SERVICE_UUID = '9f6a1000-0000-1000-8000-00805f9b34fb';
+const RX_UUID = '9f6a1001-0000-1000-8000-00805f9b34fb';
+
+let device = null;
+let characteristic = null;
+
+function setStatus(text) {
+  document.getElementById('status').textContent = text;
+}
+
+async function connectBLE() {
+  try {
+    if (!navigator.bluetooth) {
+      setStatus('Web Bluetooth tidak didukung. Gunakan Chrome Android yang kompatibel.');
+      return;
+    }
+
+    setStatus('Memilih perangkat...');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'Mika Mochi' }],
+      optionalServices: [SERVICE_UUID]
+    });
+
+    device.addEventListener('gattserverdisconnected', () => {
+      characteristic = null;
+      setStatus('Bluetooth terputus');
+    });
+
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    characteristic = await service.getCharacteristic(RX_UUID);
+
+    setStatus('Terhubung ke ' + device.name);
+  } catch (error) {
+    setStatus('Gagal: ' + error.message);
+  }
+}
+
+async function disconnectBLE() {
+  if (device && device.gatt.connected) {
+    device.gatt.disconnect();
+  }
+  characteristic = null;
+  setStatus('Bluetooth terputus');
+}
+
+async function sendBLE(message) {
+  if (!characteristic) {
+    setStatus('Hubungkan Mika Mochi terlebih dahulu');
+    return;
+  }
+
+  try {
+    const bytes = new TextEncoder().encode(message);
+    await characteristic.writeValue(bytes);
+    setStatus('Terkirim: ' + message);
+  } catch (error) {
+    setStatus('Gagal mengirim: ' + error.message);
+  }
+}
+
+function sendCurrentTime() {
+  const now = new Date();
+  const time = now.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  document.getElementById('clock').value = time;
+  sendBLE('CLOCK|' + time);
+}
+
+function sendMessage() {
+  const sender = document.getElementById('sender').value || 'Pesan';
+  const message = document.getElementById('message').value;
+  sendBLE('MSG|' + sender + '|' + message);
+}
+</script>
+
+</body>
+</html>
